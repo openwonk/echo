@@ -6,30 +6,27 @@ import (
 	"strconv"
 )
 
-// Set socket parameters
-// Create socket object
-// Bind socket to port
-// Listen and accept connections
+type Server struct{}
 
-type Server struct {
-	// Host string
-	Port int
-}
-
-func (s *Server) Listen() {
-	conn, err := net.Listen("tcp", ":"+strconv.Itoa(s.Port))
-	if err != nil {
-		fmt.Println(err)
-	}
+func (self *Server) Listen(port int) {
+	conn, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	check(err)
 
 	var clients []net.Conn
 	input := make(chan []byte, 10)
 
+	go func() { // Chat Manager
+		for {
+			message := <-input
+			for _, client := range clients {
+				client.Write(message)
+			}
+		}
+	}()
+
 	for {
 		client, err := conn.Accept()
-		if err != nil {
-			continue
-		}
+		check(err)
 
 		clients = append(clients, client)
 		go handleClient(client, input)
@@ -43,6 +40,13 @@ func handleClient(client net.Conn, input chan []byte) {
 		if numbytes == 0 || err != nil {
 			return
 		}
-		client.Write(buf)
+		// client.Write(buf) // single user only
+		input <- buf // chat service
+	}
+}
+
+func check(err error) {
+	if err != nil {
+		fmt.Println(err)
 	}
 }
