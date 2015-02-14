@@ -1,5 +1,5 @@
 from cStringIO import StringIO
-from client import client
+from echo_client import client
 import socket
 import unittest
 

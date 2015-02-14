@@ -20,6 +20,7 @@ def Handler(conn, addr):
 	session = True
 
 	while session:
+		
 		incoming = conn.recv(1000)
 		exit = incoming.replace("\n","")
 
