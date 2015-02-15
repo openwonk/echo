@@ -2,6 +2,7 @@ package echo
 
 import (
 	// "bytes"
+	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -11,6 +12,7 @@ import (
 )
 
 var (
+	// users  = []int{}
 	cmds   = make(map[int]string)
 	store  = make(map[string]string)
 	backup = make(map[string]string)
@@ -22,33 +24,53 @@ func (self *Server) Listen(port int) {
 	conn, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	check(err)
 
-	var clients []net.Conn
+	// var clients []net.Conn
+	clients := make(map[string]net.Conn)
 	input := make(chan []byte, 10)
 
-	go func() { // Chat Manager
+	go func() { // CLIENT TERMINAL
 		for {
+			// PROMPT
 			for _, client := range clients {
 				client.Write([]byte(">> "))
 			}
 
+			// RECEIVE MESSAGES
 			message := string(<-input)
+			r, v := regexp.MustCompile("[^a-z|0-9|A-Z| ]"), ""
+			message = r.ReplaceAllString(message, "")
+
 			inputArray := strings.Split(message, " ")
-			r := regexp.MustCompile("[^a-z|0-9|A-Z| ]")
 
-			fmt.Println(len(message), message)
+			if len(inputArray) > 1 {
+				// 	v = r.ReplaceAllString(inputArray[1], "")
+				v = inputArray[1]
 
-			switch v := r.ReplaceAllString(inputArray[1], ""); strings.ToLower(inputArray[0]) {
+			}
+
+			fmt.Println("'" + message + "'")
+			fmt.Println("'" + inputArray[0] + "'")
+			fmt.Println(len(inputArray[0]))
+
+			// PARSE MESSAGES
+			switch strings.ToLower(inputArray[0]) {
 			case "set":
-				store[inputArray[1]] = inputArray[2]
+				if len(inputArray) < 3 {
+					message = "set error"
+				} else {
+					store[inputArray[1]] = inputArray[2]
+					message = inputArray[1] + " = " + inputArray[2]
+				}
+
 			case "get":
 				message = store[v]
-
 			case "unset":
 				delete(store, v)
-
+				message = ""
 			case "all":
-				for k, v := range store {
-					fmt.Println(k, v)
+				message = ""
+				for key, val := range store {
+					message += key + ":" + val + "\n"
 				}
 
 			case "cmds":
@@ -56,109 +78,56 @@ func (self *Server) Listen(port int) {
 					fmt.Println(k, v)
 				}
 
-			case "equals":
-				c := 0
-				for _, v := range store {
-					if v == inputArray[1] {
-						c++
-					}
-				}
-				fmt.Println(c)
-
-			case "greater":
-				c := 0
-				i, err := strconv.Atoi(inputArray[1])
-				check(err)
-
-				for _, v := range store {
-					n, _ := strconv.Atoi(v)
-					if n > i {
-						c++
-					}
-				}
-
-				fmt.Println(c)
-
-			case "lesser":
-				c := 0
-				i, err := strconv.Atoi(inputArray[1])
-				check(err)
-
-				for _, v := range store {
-					n, _ := strconv.Atoi(v)
-					if n < i {
-						c++
-					}
-				}
-
-				fmt.Println(c)
-
-			case "add":
-				i, err := strconv.Atoi(inputArray[1])
-				if err != nil {
-					i, _ = strconv.Atoi(store[inputArray[1]])
-				}
-
-				j, err := strconv.Atoi(inputArray[2])
-				if err != nil {
-					j, _ = strconv.Atoi(store[inputArray[2]])
-				}
-
-				m := i + j
-				fmt.Println(inputArray[1], "+", inputArray[2], "=", m)
-
-			case "subtract":
-				i, err := strconv.Atoi(inputArray[1])
-				if err != nil {
-					i, _ = strconv.Atoi(store[inputArray[1]])
-				}
-
-				j, err := strconv.Atoi(inputArray[2])
-				if err != nil {
-					j, _ = strconv.Atoi(store[inputArray[2]])
-				}
-
-				m := i - j
-				fmt.Println(inputArray[1], "-", inputArray[2], "=", m)
-
-			case "clear":
-				cmds = make(map[int]string)
-				store = make(map[string]string)
-
-			// case "begin", "commit":
-			// 	copy(&backup, store)
-
-			// case "restore":
-			// 	copy(&store, backup)
-
-			case "save":
-				filename := inputArray[1]
-				// err = ioutil.WriteFile(filename, store)
-				f, err := os.Create(filename)
-				check(err)
-				defer f.Close()
-
-				// TODO: convert store to JSON
-				// then save to local file
-				sample := []byte{115, 111, 109, 101, 10}
-
-				f.Write(sample)
-				fmt.Printf("Saved to %s\n", filename)
-
-			case "exit":
-				fmt.Println("Goodbye\n")
-				os.Exit(0)
-
-				// // only use in devmode
-				// case "getbackup":
-				// 	fmt.Println(backup)
+			default:
+				message = "entry error"
 
 			}
 
+			message = message + "\n"
 			for _, client := range clients {
 				client.Write([]byte(message))
 				// fmt.Println(store)
 			}
+		}
+	}()
+
+	go func() { // Server Terminal
+		fmt.Println("Listing on :" + strconv.Itoa(port))
+		for {
+
+			scanner := bufio.NewScanner(os.Stdin)
+			fmt.Print("$ ")
+			scanner.Scan()
+
+			text := scanner.Text()
+			r := regexp.MustCompile("[^a-z|0-9|A-Z| ]") // recalibrate to include "?!"
+			text = r.ReplaceAllString(text, "")
+
+			textArray := strings.Split(text, " ")
+
+			switch strings.ToLower(textArray[0]) {
+			case "quit", "exit":
+				os.Exit(1)
+			case "all":
+				fmt.Println(store)
+			case "users":
+				for k, v := range clients {
+					fmt.Println(k, v)
+				}
+			case "kill":
+				fmt.Println("killing signal @ ", "'"+textArray[1]+"'")
+				clients[textArray[1]].Write([]byte("\nAdmin closing connection... Goodbye\n"))
+				clients[textArray[1]].Close()
+				delete(clients, textArray[1])
+			case "write":
+				message := "\nAdmin => " + strings.Join(textArray[2:], " ") + "\n>> "
+				clients[textArray[1]].Write([]byte(message))
+			case "restart":
+
+			default:
+				fmt.Println("input error")
+			}
+
 		}
 	}()
 
@@ -167,9 +136,13 @@ func (self *Server) Listen(port int) {
 		client, err := conn.Accept()
 		check(err)
 
+		// client_port, _ := strconv.Atoi(client.RemoteAddr().String()[6:])
+		// users = append(users, client_port)
+
 		client.Write([]byte(">> "))
 
-		clients = append(clients, client)
+		// clients = append(clients, client)
+		clients[client.RemoteAddr().String()[6:]] = client
 		go handleClient(client, input)
 	}
 }
